@@ -1,85 +1,49 @@
-import { PlaywrightBrowserService } from "./services/browser.service.js";
-import { GoogleNewsIngestor } from "./ingestors/google-news.ingestor.js";
-import { ProMedIngestor } from "./ingestors/promed.ingestor.js";
-import { NewsDataIngestor } from "./ingestors/newsdata.ingestor.js";
-import type { SignalIngestor, NormalizedSignal } from "./types/ingestor.js";
-import { DeduplicationService } from "./services/dedup.service.js";
-import { persistQueue } from "./infra/queues.js";
+import { fetchQueue } from "./infra/queues.js";
+import { startFetchWorker } from "./workers/fetch.worker";
+import { startPersistWorker } from "./workers/persist.worker";
 
-async function bootstrap() {
-  const browserService = new PlaywrightBrowserService();
-  const deduplicationService = new DeduplicationService();
-
-  await browserService.init();
-  await deduplicationService.connect();
-
-  const ingestors: SignalIngestor[] = [
-    new GoogleNewsIngestor(),
-    new ProMedIngestor(browserService),
-    new NewsDataIngestor(),
-  ];
-
-  console.log(
-    `Starting multi-source ingestion (${ingestors.length} sources registered)...\n`,
+async function registerSchedules() {
+  await fetchQueue.upsertJobScheduler(
+    "schedule-google-news",
+    { pattern: "*/30 * * * *" },
+    { name: "fetch-google-news", data: { source: "GOOGLE_NEWS" } },
   );
-  const aggregatedSignals: NormalizedSignal[] = [];
 
-  try {
-    for (const ingestor of ingestors) {
-      try {
-        console.log(`--- Running ${ingestor.name} ---`);
-        const signals = await ingestor.collect();
-        aggregatedSignals.push(...signals);
-        console.log(
-          `✓ [${ingestor.name}] Harvested ${signals.length} valid signals.\n`,
-        );
-      } catch (err) {
-        console.error(`✗ [${ingestor.name}] Error during collection:`, err);
-      }
-    }
+  await fetchQueue.upsertJobScheduler(
+    "schedule-newsdata",
+    { pattern: "0 * * * *" },
+    { name: "fetch-newsdata", data: { source: "NEWSDATA" } },
+  );
 
-    console.log("====================================");
-    console.log(
-      `Total Outbreak Signals Harvested: ${aggregatedSignals.length}`,
-    );
-    console.log("====================================\n");
-
-    const bySource = aggregatedSignals.reduce(
-      (acc, s) => {
-        acc[s.source] = (acc[s.source] || 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
-
-    console.log("Breakdown by Source:", bySource);
-
-    const { newSignals, duplicateCount } =
-      await deduplicationService.filterNewSignals(aggregatedSignals);
-
-    console.log(`====================================`);
-    console.log(`New Unseen Signals : ${newSignals.length}`);
-    console.log(`Duplicates Dropped : ${duplicateCount}`);
-    console.log(`====================================\n`);
-
-    if (newSignals.length > 0) {
-      await persistQueue.addBulk(
-        newSignals.map((signal) => ({
-          name: "upsert-signal",
-          data: signal,
-          opts: { jobId: signal.id }, // Prevents duplicate jobs in BullMQ
-        })),
-      );
-      console.log(`Enqueued ${newSignals.length} signals to persist-queue.`);
-    } else {
-      console.log(`No new events to enqueue.`);
-    }
-  } finally {
-    await browserService.close();
-    await deduplicationService.disconnect();
-    await persistQueue.close();
-    console.log("Browser, Redis, and Queue connections closed.");
-  }
+  await fetchQueue.upsertJobScheduler(
+    "schedule-promed",
+    { pattern: "0 */2 * * *" },
+    { name: "fetch-promed", data: { source: "PROMED" } },
+  );
+  console.log("[Scheduler] Repeatable fetch schedules registered.");
 }
 
-bootstrap();
+async function bootstrap() {
+  await registerSchedules();
+
+  const { closeAll: closeFetchWorker } = startFetchWorker();
+  const persistWorker = startPersistWorker();
+
+  console.log("[System] Outbreak ingestion workers are running.");
+
+  const shutdown = async () => {
+    console.log("\n[System] Gracefully shutting down workers...");
+    await closeFetchWorker();
+    await persistWorker.close();
+    await fetchQueue.close();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+bootstrap().catch((err) => {
+  console.error("[System] Fatal startup error:", err);
+  process.exit(1);
+});

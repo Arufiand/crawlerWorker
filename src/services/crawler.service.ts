@@ -26,7 +26,7 @@ export class CrawlerService {
       } catch (e) {
         console.error(`[Crawler] Failed to extract article: ${e}`);
       } finally {
-        await discoveryPage.close();
+        await detailPage.close();
       }
     }
     return results;
