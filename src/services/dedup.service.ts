@@ -53,4 +53,8 @@ export class DeduplicationService {
     await this.redis.quit();
     console.log(`[Redis] disconnected successfully.`);
   }
+
+  async unmarkSignal(signalId: string): Promise<void> {
+    await this.redis.del(`signal:seen:${signalId}`);
+  }
 }

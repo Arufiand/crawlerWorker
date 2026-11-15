@@ -8,10 +8,6 @@ export class SignalRepository {
       ? new Date()
       : parsedDate;
 
-    const existing = await db.orm.public.OutbreakSignal.where({
-      sourceUrl: signal.sourceUrl,
-    }).first();
-
     const payload = {
       source: signal.source,
       sourceUrl: signal.sourceUrl,
@@ -28,15 +24,21 @@ export class SignalRepository {
       isKlb: signal.isKlb,
     };
 
-    if (existing) {
-      await db.orm.public.OutbreakSignal.where({
+    await db.transaction(async (tx) => {
+      const existing = await tx.orm.public.OutbreakSignal.where({
         sourceUrl: signal.sourceUrl,
-      }).update(payload);
-    } else {
-      await db.orm.public.OutbreakSignal.create({
-        id: signal.id,
-        ...payload,
-      });
-    }
+      }).first();
+
+      if (existing) {
+        await tx.orm.public.OutbreakSignal.where({
+          sourceUrl: signal.sourceUrl,
+        }).update(payload);
+      } else {
+        await tx.orm.public.OutbreakSignal.create({
+          id: signal.id,
+          ...payload,
+        });
+      }
+    });
   }
 }
