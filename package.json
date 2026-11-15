@@ -12,7 +12,10 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "prepare": "husky",
-    "contract:emit": "prisma contract emit"
+    "contract:emit": "prisma contract emit",
+    "worker:fetch": "tsx src/workers/fetch.worker.ts",
+    "worker:persist": "tsx src/workers/persist.worker.ts",
+    "db:seed": "tsx src/prisma/seed.ts"
   },
   "keywords": [],
   "author": "",
