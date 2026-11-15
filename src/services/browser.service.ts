@@ -1,5 +1,9 @@
-import { type Page } from "playwright";
-import { Browser, BrowserContext, chromium } from "@playwright/test";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from "playwright";
 
 export interface IBrowserService {
   init(): Promise<void>;
@@ -45,9 +49,12 @@ export class PlaywrightBrowserService implements IBrowserService {
   }
 
   async close(): Promise<void> {
-    if (this.context) await this.context.close();
-    if (this.browser) await this.browser.close();
-    this.browser = null;
+    const context = this.context;
+    const browser = this.browser;
     this.context = null;
+    this.browser = null;
+
+    if (context) await context.close();
+    if (browser) await browser.close();
   }
 }

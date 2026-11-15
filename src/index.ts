@@ -1,6 +1,10 @@
 import { fetchQueue } from "./infra/queues.js";
-import { startFetchWorker } from "./workers/fetch.worker";
-import { startPersistWorker } from "./workers/persist.worker";
+import { startFetchWorker } from "./workers/fetch.worker.js";
+import { startPersistWorker } from "./workers/persist.worker.js";
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[System] Unhandled Rejection:", reason);
+});
 
 async function registerSchedules() {
   await fetchQueue.upsertJobScheduler(
@@ -27,14 +31,14 @@ async function bootstrap() {
   await registerSchedules();
 
   const { closeAll: closeFetchWorker } = startFetchWorker();
-  const persistWorker = startPersistWorker();
+  const { closeAll: closePersistWorker } = startPersistWorker();
 
   console.log("[System] Outbreak ingestion workers are running.");
 
   const shutdown = async () => {
     console.log("\n[System] Gracefully shutting down workers...");
     await closeFetchWorker();
-    await persistWorker.close();
+    await closePersistWorker();
     await fetchQueue.close();
     process.exit(0);
   };

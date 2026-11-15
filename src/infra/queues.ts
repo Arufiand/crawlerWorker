@@ -1,6 +1,6 @@
-import { redisConfig } from "../config/env";
+import { redisConfig } from "../config/env.js";
 import { Queue } from "bullmq";
-import { NormalizedSignal } from "../types/ingestor";
+import { NormalizedSignal } from "../types/ingestor.js";
 
 export interface FetchJobPayload {
   source: NormalizedSignal["source"];
